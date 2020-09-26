@@ -1,0 +1,14 @@
+# Color Grabber/colorgrabber.py: 3
+numpy == 1.19.2
+
+# Color Grabber/colorgrabber.py: 2
+opencv_python == 4.4.0.44
+
+# Color Grabber/colorgrabber.py: 4
+scikit-learn == 0.23.2
+
+# Color Grabber/colorgrabber.py: 1
+webcolors == 1.11.1
+
+# Color Grabber/colorgrabber.py 10
+pyinstaller == 4.0
