@@ -1,82 +1,72 @@
-import webcolors
-import cv2
-import numpy as np
-from sklearn.cluster import KMeans
-from tkinter import *
-from tkinter import filedialog
-import tempfile
-import base64, zlib
 import os
-from PyInstaller.utils.hooks import collect_submodules
+import zlib
+import base64
+import tempfile
+import numpy as np
+import webcolors
+from sklearn.cluster import KMeans
+import cv2
+from PIL import Image, ImageTk, ImageGrab
+from tkinter import Tk, Frame, Label, Button, BOTH, SUNKEN, filedialog
 
-ICON = zlib.decompress(base64.b64decode('eJxjYGAEQgEBBiDJwZDBy'
-    'sAgxsDAoAHEQCEGBQaIOAg4sDIgACMUj4JRMApGwQgF/ykEAFXxQRc='))
+def rgb_to_hex(rgb):
+    return '#%02x%02x%02x' % rgb
+    
+def closest_color(color):
+    min_colors = {}
+    for hex_value, name in webcolors.names("css3").items():
+        r_c, g_c, b_c = webcolors.hex_to_rgb(hex_value)
+        rd = (r_c - color[0]) ** 2
+        gd = (g_c - color[1]) ** 2
+        bd = (b_c - color[2]) ** 2
+        min_colors[(rd + gd + bd)] = name
+    return min_colors[min(min_colors.keys())]
 
-_, ICON_PATH = tempfile.mkstemp()
-with open(ICON_PATH, 'wb') as icon_file:
-    icon_file.write(ICON)
+def get_color(color):
+    try:
+        closest_name = actual_name = webcolors.rgb_to_name(color)
+    except:
+        closest_name = closest_color(color)
+        actual_name = None
+    return actual_name, closest_name
 
 def color_grab(filename):
-	img = cv2.imread(filename)
-	img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.imread(filename)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = img.reshape((img.shape[0] * img.shape[1], 3))
 
-	img = img.reshape((img.shape[0] * img.shape[1], 3))
+    n_clusters = 5
+    kmeans = KMeans(n_clusters=n_clusters, n_init='auto')
+    kmeans.fit(img)
+    
+    colors = kmeans.cluster_centers_
+    labels = kmeans.labels_
 
+    label_count = [0 for _ in range(n_clusters)]
+    for ele in labels:
+        label_count[ele] += 1
+    
+    dominant_idx = label_count.index(max(label_count))
+    dominant_rgb = (int(colors[dominant_idx][0]), 
+                    int(colors[dominant_idx][1]), 
+                    int(colors[dominant_idx][2]))
 
-	n_clusters = 5
-	kmeans = KMeans(n_clusters)
-	kmeans.fit(img)
-	colors = kmeans.cluster_centers_
-	labels = kmeans.labels_
+    try:
+        closest_name = webcolors.rgb_to_name(dominant_rgb)
+    except ValueError:
+        min_colors = {}
+        for name in webcolors.names("css3"):
+            hex_val = webcolors.name_to_hex(name)
+            r_c, g_c, b_c = webcolors.hex_to_rgb(hex_val)
+            
+            rd = (r_c - dominant_rgb[0]) ** 2
+            gd = (g_c - dominant_rgb[1]) ** 2
+            bd = (b_c - dominant_rgb[2]) ** 2
+            min_colors[(rd + gd + bd)] = name
+            
+        closest_name = min_colors[min(min_colors.keys())]
 
-	def closest_color(color):
-	    min_colors = {}
-	    for key, name in webcolors.css3_hex_to_names.items():
-	        r_c, g_c, b_c = webcolors.hex_to_rgb(key)
-	        rd = (r_c - color[0]) ** 2
-	        gd = (g_c - color[1]) ** 2
-	        bd = (b_c - color[2]) ** 2
-	        min_colors[(rd + gd + bd)] = name
-	    return min_colors[min(min_colors.keys())]
-			
-	def get_color(color):
-		try:
-			closest_name = actual_name = webcolors.rgb_to_name(color)
-		except:
-			closest_name = closest_color(color)
-			actual_name = None
-		return actual_name, closest_name
-
-	label_count = [0 for i in range(n_clusters)]
-	for ele in labels:
-		label_count[ele] += 1
-	index_color = label_count.index(max(label_count))
-	'''
-	print
-	for index, ele in enumerate(label_count):
-		print(str(ele) + 'labels with pixel value ')
-		print(colors[index])
-		print('Percentage ' + str(float(ele)/len(labels)*100))
-		print()
-	'''
-	#actual_name, closest_name = get_color(colors[index_color])
-
-	color = (int(colors[index_color][0]), int(colors[index_color][1]), int(colors[index_color][2]))
-	actual_name, closest_name = get_color(color)
-	#print(f"Actual Name: {actual_name}\nClosest Name: {closest_name}")
-
-	r = colors[index_color][0]
-	g = colors[index_color][1]
-	b = colors[index_color][2]
-
-	image = np.zeros((100,100,3),np.uint8)
-	for x in range(100):
-		for y in range(100):
-			image[x,y] = [b,g,r]
-
-	cv2.imwrite('result.png', image)
-
-	return closest_name
+    return closest_name, dominant_rgb
 
 class Window(Frame):
 
@@ -85,34 +75,44 @@ class Window(Frame):
         self.master = master
         self.init_window()
 
-    #Creation of init_window
-    def init_window(self):
-
-        # changing the title of our master widget      
+    def init_window(self):     
         self.master.title("ColorGrabber")
-
-        # allowing the widget to take the full space of the root window
         self.pack(fill=BOTH, expand=1)
 
-        # creating a button instance
-        browseButton = Button(self, text="Choose Image", command=self.browse_files)
+        self.user_image_label = Label(self, text="No Image", bg="lightgrey")
+        self.user_image_label.place(x=25, y=25, width=150, height=150)
 
-        # placing the button on my window
-        browseButton.place(x=120, y=320)
+        self.color_display_box = Frame(self, width=100, height=100, relief=SUNKEN, borderwidth=2)
+        self.color_display_box.place(x=200, y=50)
+
+        self.colorInfoLabel = Label(self, text="Select an image", font=("Arial", 10))
+        self.colorInfoLabel.place(x=180, y=160)
+
+        browseButton = Button(self, text="Choose Image", command=self.browse_files)
+        browseButton.place(x=120, y=300)
 
     def browse_files(self): 
-    	filename = filedialog.askopenfilename(initialdir = "/", title = "Select a File", filetypes = (("PNG files", "*.png*"), ("all files", "*.*"))) 
-    	color = color_grab(filename)
-    	colorInfoLabel = Label(root, text=f"Closest name: {color}")
-    	colorInfoLabel.place(x=100,y=220)
-    	colorPhoto = PhotoImage(file="result.png")
-    	os.remove("result.png")
-    	colorPhotoLabel = Label(root,image=colorPhoto)
-    	colorPhotoLabel.colorPhoto = colorPhoto
-    	colorPhotoLabel.place(x=115,y=100)
+        filename = filedialog.askopenfilename(
+            initialdir="/",
+            title="Select a File",
+            filetypes=(("Image files", "*.png *.jpg *.jpeg"), ("all files", "*.*"))
+        ) 
+        
+        if filename:
+            name, rgb = color_grab(filename)
+            hex_color = '#%02x%02x%02x' % rgb
+            
+            img = Image.open(filename)
+            img.thumbnail((150, 150))
+            img_tk = ImageTk.PhotoImage(img)
+            
+            self.user_image_label.config(image=img_tk, text="")
+            self.user_image_label.image = img_tk
+            
+            self.colorInfoLabel.config(text=f"Name: {name.capitalize()}\nHex: {hex_color.upper()}")
+            self.color_display_box.config(bg=hex_color)
 
 root = Tk()
-root.iconbitmap(default=ICON_PATH)
 root.geometry("350x350")
 app = Window(root)
 root.mainloop()
